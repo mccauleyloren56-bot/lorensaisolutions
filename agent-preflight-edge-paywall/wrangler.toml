@@ -1,8 +1,12 @@
 name = "agent-preflight-edge-paywall"
-main = "src/index.ts"
+main = "src/index.generated.ts"
 compatibility_date = "2026-07-30"
 compatibility_flags = ["nodejs_compat"]
 workers_dev = true
+
+[build]
+command = "node scripts/assemble-index.mjs"
+watch_dir = ["src/index.parts", "src/routes.ts"]
 
 [[routes]]
 pattern = "preflight.lorensaisolutions.com"
