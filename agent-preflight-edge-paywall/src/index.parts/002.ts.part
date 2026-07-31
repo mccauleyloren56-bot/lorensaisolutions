@@ -1,0 +1,150 @@
+  const middleware = paymentMiddleware(
+    toX402Routes(),
+    resourceServer,
+    undefined,
+    undefined,
+    false,
+  );
+  return middleware(c, next);
+});
+
+app.get("/", (c) =>
+  c.json({
+    ok: true,
+    service: SERVICE.name,
+    version: SERVICE.version,
+    network: c.env.X402_NETWORK,
+    asset: c.env.X402_ASSET,
+    payTo: c.env.X402_PAY_TO,
+    pricing: ROUTES.map((route) => ({
+      method: route.method,
+      path: route.path,
+      price: route.price,
+      title: route.title,
+      example: `${route.method} ${routeExample(route)}`,
+    })),
+    discovery: {
+      openapi: "/openapi.json",
+      mcp: "/mcp",
+      skill: "/SKILL.md",
+      llms: "/llms.txt",
+      x402: "/.well-known/x402.json",
+      agentCard: "/.well-known/agent-card.json",
+    },
+  }),
+);
+
+app.get("/docs", (c) => c.html(renderDocs()));
+app.get("/openapi.json", (c) => c.json(openApiDocument()));
+app.get("/SKILL.md", (c) => c.text(skillMarkdown(), 200, { "Content-Type": "text/markdown; charset=utf-8" }));
+app.get("/llms.txt", (c) => c.text(llmsText()));
+app.get("/server.json", (c) => c.json(serverDocument()));
+app.get("/.well-known/mcp/server.json", (c) => c.json(serverDocument()));
+app.get("/.well-known/agent-card.json", (c) => c.json(agentCard()));
+app.get("/.well-known/x402.json", (c) => c.json(x402Discovery()));
+app.get("/mcp", (c) =>
+  c.json({
+    jsonrpc: "2.0",
+    protocolVersion: "2025-06-18",
+    capabilities: { tools: { listChanged: false } },
+    endpoint: `${SERVICE.baseUrl}/mcp`,
+  }),
+);
+app.get("/mcp/tools/list", (c) =>
+  c.json({ jsonrpc: "2.0", result: { tools: mcpTools() } }),
+);
+
+app.post("/mcp", async (c) => {
+  const parsed = mcpRequestSchema.safeParse(await c.req.json().catch(() => null));
+  if (!parsed.success) {
+    return c.json(mcpError(null, -32600, "Invalid JSON-RPC request"), 400);
+  }
+
+  const { id = null, method, params = {} } = parsed.data;
+  if (method === "initialize") {
+    return c.json({
+      jsonrpc: "2.0",
+      id,
+      result: {
+        protocolVersion: "2025-06-18",
+        capabilities: { tools: { listChanged: false } },
+        serverInfo: { name: "agent-preflight-edge-paywall", version: SERVICE.version },
+      },
+    });
+  }
+  if (method === "notifications/initialized") {
+    return c.body(null, 204);
+  }
+  if (method === "tools/list") {
+    return c.json({ jsonrpc: "2.0", id, result: { tools: mcpTools() } });
+  }
+  if (method !== "tools/call") {
+    return c.json(mcpError(id, -32601, "Method not found"), 404);
+  }
+
+  const name = typeof params.name === "string" ? params.name : "";
+  const route = routeById(name);
+  if (!route) {
+    return c.json(mcpError(id, -32602, "Unknown tool"), 400);
+  }
+  const args =
+    params.arguments && typeof params.arguments === "object"
+      ? params.arguments as Record<string, unknown>
+      : {};
+  const targetRequest = buildMcpToolRequest(c, route, args);
+  if (targetRequest instanceof Response) return targetRequest;
+
+  const paidResponse = await app.fetch(targetRequest, c.env, c.executionCtx);
+  const body = await paidResponse.text();
+  const headers = new Headers({ "Content-Type": "application/json" });
+  const paymentRequired = paidResponse.headers.get("PAYMENT-REQUIRED");
+  const paymentResponse = paidResponse.headers.get("PAYMENT-RESPONSE");
+  if (paymentRequired) headers.set("PAYMENT-REQUIRED", paymentRequired);
+  if (paymentResponse) headers.set("PAYMENT-RESPONSE", paymentResponse);
+
+  if (paidResponse.status === 402) {
+    return new Response(body, { status: 402, headers });
+  }
+
+  const resultBody = safeJson(body);
+  return new Response(
+    JSON.stringify({
+      jsonrpc: "2.0",
+      id,
+      result: {
+        content: [{ type: "text", text: JSON.stringify(resultBody) }],
+        structuredContent: resultBody,
+        isError: paidResponse.status >= 400,
+      },
+    }),
+    { status: paidResponse.status, headers },
+  );
+});
+
+app.post("/mcp/tools/call", async (c) => {
+  const body = await c.req.json().catch(() => null);
+  const wrappedRequest = new Request(`${SERVICE.baseUrl}/mcp`, {
+    method: "POST",
+    headers: c.req.raw.headers,
+    body: JSON.stringify({
+      jsonrpc: "2.0",
+      id: crypto.randomUUID(),
+      method: "tools/call",
+      params: body,
+    }),
+  });
+  return app.fetch(wrappedRequest, c.env, c.executionCtx);
+});
+
+const paidHandlers: Record<RouteId, Handler<AppEnv>> = {
+access_check: async (c) => {
+  const url = parseUrlQuery(c.req.query("url"));
+  if (url instanceof Response) return url;
+  const result = await standardPreflight(url);
+  setFulfillmentMeta(c, "access_check", url, result);
+  return c.json({
+    url,
+    final_url: result.final_url,
+    status: result.status,
+    login: result.checks.login,
+    captcha: result.checks.captcha,
