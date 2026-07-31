@@ -4,7 +4,8 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "check": "wrangler types && tsc --noEmit && wrangler deploy --dry-run",
+    "build": "node scripts/assemble-index.mjs",
+    "check": "npm run build && wrangler types && tsc --noEmit && wrangler deploy --dry-run",
     "deploy": "wrangler deploy",
     "dev": "wrangler dev --test-scheduled"
   },
