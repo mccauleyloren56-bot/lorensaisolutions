@@ -3,7 +3,7 @@
     resourceServer,
     undefined,
     undefined,
-    false,
+    true,
   );
   return middleware(c, next);
 });
