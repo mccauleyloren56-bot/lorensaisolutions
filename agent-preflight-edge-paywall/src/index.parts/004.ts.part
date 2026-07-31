@@ -1,0 +1,150 @@
+  );
+  const successes = attempts
+    .filter((attempt): attempt is PromiseFulfilledResult<FetchEvidence> => attempt.status === "fulfilled")
+    .map((attempt) => attempt.value);
+
+  if (successes.length === 0) {
+    throw new Error("FETCH_FAILED_ALL_UAS");
+  }
+
+  const primary =
+    successes.find((evidence) => evidence.user_agent.startsWith("Mozilla/")) ??
+    successes[0];
+  const result = analyzeEvidence(primary, Date.now() - started);
+  const aggregateRisk = highestRisk(
+    successes.map((evidence) => analyzeEvidence(evidence, evidence.latency_ms).risk),
+  );
+  const aggregateCanProceed = successes.every(
+    (evidence) => analyzeEvidence(evidence, evidence.latency_ms).can_proceed,
+  );
+
+  return {
+    ...result,
+    risk: aggregateRisk,
+    can_proceed: aggregateCanProceed,
+    user_agent_evidence: attempts.map((attempt, index) => {
+      if (attempt.status === "rejected") {
+        return { user_agent: USER_AGENTS[index], error: errorCode(attempt.reason) };
+      }
+      const { html: _html, ...safeEvidence } = attempt.value;
+      return safeEvidence;
+    }),
+  };
+}
+
+async function fetchWithRedirects(url: string, userAgent: string): Promise<FetchEvidence> {
+  const started = Date.now();
+  const redirects: RedirectHop[] = [];
+  let currentUrl = url;
+
+  for (let hop = 0; hop <= MAX_REDIRECTS; hop += 1) {
+    const response = await fetchWithRetry(currentUrl, userAgent);
+
+    if (isRedirect(response.status)) {
+      const location = response.headers.get("Location");
+      if (!location) throw new Error("REDIRECT_WITHOUT_LOCATION");
+      if (hop === MAX_REDIRECTS) throw new Error("REDIRECT_LIMIT_EXCEEDED");
+
+      const nextUrlResult = urlSchema.safeParse(new URL(location, currentUrl).toString());
+      if (!nextUrlResult.success) throw new Error("UNSAFE_REDIRECT_TARGET");
+      redirects.push({ status: response.status, from: currentUrl, to: nextUrlResult.data });
+      currentUrl = nextUrlResult.data;
+      continue;
+    }
+
+    const html = await readBoundedText(response, MAX_BODY_BYTES);
+    return {
+      user_agent: userAgent,
+      requested_url: url,
+      final_url: response.url || currentUrl,
+      status: response.status,
+      redirects,
+      headers: {
+        content_type: response.headers.get("Content-Type"),
+        server: response.headers.get("Server"),
+        cf_ray: response.headers.get("CF-Ray"),
+      },
+      title: extractTitle(html),
+      html,
+      html_length: new TextEncoder().encode(html).byteLength,
+      latency_ms: Date.now() - started,
+    };
+  }
+
+  throw new Error("UPSTREAM_FETCH_FAILED");
+}
+
+async function fetchWithRetry(url: string, userAgent: string): Promise<Response> {
+  let lastError: unknown;
+  for (let attempt = 0; attempt < RETRIES_PER_HOP; attempt += 1) {
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), FETCH_TIMEOUT_MS);
+    try {
+      return await fetch(url, {
+        method: "GET",
+        redirect: "manual",
+        headers: {
+          "User-Agent": userAgent,
+          Accept: "text/html,application/xhtml+xml,application/json;q=0.9,*/*;q=0.8",
+          "Accept-Language": "en-US,en;q=0.9",
+          "Cache-Control": "no-cache",
+        },
+        signal: controller.signal,
+      });
+    } catch (error) {
+      lastError = error;
+      if (attempt + 1 < RETRIES_PER_HOP) {
+        await delay(125 * (attempt + 1));
+      }
+    } finally {
+      clearTimeout(timeout);
+    }
+  }
+  throw new Error(`UPSTREAM_FETCH_FAILED:${errorCode(lastError)}`);
+}
+
+async function readBoundedText(response: Response, maxBytes: number): Promise<string> {
+  if (!response.body) return "";
+  const reader = response.body.getReader();
+  const chunks: Uint8Array[] = [];
+  let total = 0;
+
+  while (true) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    const remaining = maxBytes - total;
+    if (remaining <= 0) {
+      await reader.cancel("body_limit_reached");
+      break;
+    }
+    const chunk = value.byteLength > remaining ? value.slice(0, remaining) : value;
+    chunks.push(chunk);
+    total += chunk.byteLength;
+    if (total >= maxBytes) {
+      await reader.cancel("body_limit_reached");
+      break;
+    }
+  }
+
+  const merged = new Uint8Array(total);
+  let offset = 0;
+  for (const chunk of chunks) {
+    merged.set(chunk, offset);
+    offset += chunk.byteLength;
+  }
+  return new TextDecoder("utf-8", { fatal: false }).decode(merged);
+}
+
+function analyzeEvidence(evidence: FetchEvidence, latencyMs: number): PreflightResult {
+  const checks = detectSignals(evidence.html, evidence.status, evidence.headers.content_type);
+  const risk = calculateRisk(evidence.status, evidence.redirects.length, checks);
+  const canProceed =
+    evidence.status >= 200 &&
+    evidence.status < 400 &&
+    !checks.login &&
+    !checks.captcha &&
+    !checks.paywall &&
+    !checks.bot_challenge &&
+    risk !== "high";
+
+  return {
