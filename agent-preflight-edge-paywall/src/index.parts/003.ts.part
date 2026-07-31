@@ -1,0 +1,150 @@
+    bot_challenge: result.checks.bot_challenge,
+    can_proceed: result.can_proceed,
+    risk: result.risk,
+    proof: result.proof,
+  });
+},
+
+api_discovery: async (c) => {
+  const url = parseUrlQuery(c.req.query("url"));
+  if (url instanceof Response) return url;
+  const result = await standardPreflight(url);
+  setFulfillmentMeta(c, "api_discovery", url, result);
+  return c.json({
+    url,
+    final_url: result.final_url,
+    openapi: result.checks.openapi,
+    api_signals: result.checks.api_signals,
+    risk: result.risk,
+    can_proceed: result.can_proceed,
+    proof: result.proof,
+  });
+},
+
+change_check: async (c) => {
+  const parsed = singleUrlBodySchema.safeParse(await c.req.json().catch(() => null));
+  if (!parsed.success) return validationError(parsed.error);
+
+  const result = await standardPreflight(parsed.data.url);
+  const fingerprint = await sha256(
+    JSON.stringify({
+      final_url: result.final_url,
+      status: result.status,
+      title: result.proof.title,
+      html_length: result.proof.html_length,
+      checks: result.checks,
+    }),
+  );
+  const key = `change:${await sha256(parsed.data.url)}`;
+  const previous = await c.env.STATE.get(key);
+  await c.env.STATE.put(key, fingerprint);
+  setFulfillmentMeta(c, "change_check", parsed.data.url, result);
+  return c.json({
+    url: parsed.data.url,
+    changed: previous !== null && previous !== fingerprint,
+    first_observation: previous === null,
+    previous_fingerprint: previous,
+    fingerprint,
+    result,
+  });
+},
+
+preflight: async (c) => {
+  const url = parseUrlQuery(c.req.query("url"));
+  if (url instanceof Response) return url;
+  const result = await standardPreflight(url);
+  setFulfillmentMeta(c, "preflight", url, result);
+  return c.json(result);
+},
+
+product_intel: async (c) => {
+  const url = parseUrlQuery(c.req.query("url"));
+  if (url instanceof Response) return url;
+  const result = await standardPreflight(url);
+  setFulfillmentMeta(c, "product_intel", url, result);
+  return c.json({
+    url,
+    final_url: result.final_url,
+    status: result.status,
+    price: result.checks.price,
+    availability: result.checks.availability,
+    add_to_cart: result.checks.add_to_cart,
+    paywall: result.checks.paywall,
+    bot_challenge: result.checks.bot_challenge,
+    can_proceed: result.can_proceed,
+    risk: result.risk,
+    proof: result.proof,
+  });
+},
+
+batch_preflight: async (c) => {
+  const parsed = batchUrlBodySchema.safeParse(await c.req.json().catch(() => null));
+  if (!parsed.success) return validationError(parsed.error);
+
+  const results = await Promise.all(
+    parsed.data.urls.map(async (url) => {
+      try {
+        return await standardPreflight(url);
+      } catch (error) {
+        return {
+          ok: false,
+          requested_url: url,
+          error: errorCode(error),
+        };
+      }
+    }),
+  );
+  const risk = results.some((result) => "risk" in result && result.risk === "high")
+    ? "high"
+    : results.some((result) => "risk" in result && result.risk === "medium")
+      ? "medium"
+      : "low";
+  c.set("fulfillmentMeta", {
+    tool: "batch_preflight",
+    price: requireRoute("batch_preflight").price,
+    domain: `${parsed.data.urls.length} URLs`,
+    risk,
+    canProceed: results.every((result) => "can_proceed" in result && result.can_proceed),
+  });
+  return c.json({ count: results.length, risk, results });
+},
+
+premium_preflight: async (c) => {
+  const url = parseUrlQuery(c.req.query("url"));
+  if (url instanceof Response) return url;
+  const result = await premiumPreflight(url);
+  setFulfillmentMeta(c, "premium_preflight", url, result);
+  return c.json(result);
+},
+};
+
+for (const route of ROUTES) {
+  app.on(route.method, route.path, paidHandlers[route.id]);
+}
+
+app.notFound((c) => c.json({ error: "NOT_FOUND" }, 404));
+app.onError((error, c) => {
+  const code = errorCode(error);
+  console.error(JSON.stringify({ event: "request_failed", code }));
+  return c.json(
+    {
+      error: code,
+      settled: false,
+      retryable: code === "FETCH_FAILED_ALL_UAS" || code === "UPSTREAM_FETCH_FAILED",
+    },
+    502,
+  );
+});
+
+export async function standardPreflight(url: string): Promise<PreflightResult> {
+  const started = Date.now();
+  const evidence = await fetchWithRedirects(url, USER_AGENTS[0]);
+  return analyzeEvidence(evidence, Date.now() - started);
+}
+
+export async function premiumPreflight(url: string): Promise<
+  PreflightResult & { user_agent_evidence: Array<Omit<FetchEvidence, "html"> | { user_agent: string; error: string }> }
+> {
+  const started = Date.now();
+  const attempts = await Promise.allSettled(
+    USER_AGENTS.map((userAgent) => fetchWithRedirects(url, userAgent)),

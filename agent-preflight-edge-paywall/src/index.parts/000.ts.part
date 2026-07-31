@@ -1,0 +1,150 @@
+import { Hono, type Context, type Handler } from "hono";
+import { z } from "zod";
+import { paymentMiddleware, x402ResourceServer } from "@x402/hono";
+import { type FacilitatorClient } from "@x402/core/server";
+import { ExactEvmScheme } from "@x402/evm/exact/server";
+import { createCdpFacilitatorClient } from "@coinbase/cdp-sdk/x402";
+import {
+  ROUTES,
+  SERVICE,
+  agentCard,
+  llmsText,
+  mcpTools,
+  openApiDocument,
+  routeById,
+  routeByPath,
+  routeExample,
+  serverDocument,
+  skillMarkdown,
+  toX402Routes,
+  x402Discovery,
+  type RouteDefinition,
+  type RouteId,
+} from "./routes";
+
+type MoltbookAgent = {
+  id?: string;
+  name?: string;
+  username?: string;
+  owner?: string;
+  verified?: boolean;
+  raw: Record<string, unknown>;
+};
+
+type FulfillmentMeta = {
+  tool: string;
+  price: string;
+  domain: string;
+  risk?: string;
+  canProceed?: boolean;
+};
+
+type Variables = {
+  moltbookAgent?: MoltbookAgent;
+  fulfillmentMeta?: FulfillmentMeta;
+};
+
+type AppEnv = {
+  Bindings: Env;
+  Variables: Variables;
+};
+
+type RedirectHop = {
+  status: number;
+  from: string;
+  to: string;
+};
+
+type DetectionChecks = {
+  login: boolean;
+  captcha: boolean;
+  paywall: boolean;
+  bot_challenge: boolean;
+  price: string | null;
+  availability: "in_stock" | "out_of_stock" | "unknown";
+  add_to_cart: boolean;
+  openapi: boolean;
+  api_signals: string[];
+};
+
+type FetchEvidence = {
+  user_agent: string;
+  requested_url: string;
+  final_url: string;
+  status: number;
+  redirects: RedirectHop[];
+  headers: {
+    content_type: string | null;
+    server: string | null;
+    cf_ray: string | null;
+  };
+  title: string | null;
+  html: string;
+  html_length: number;
+  latency_ms: number;
+};
+
+type PreflightResult = {
+  ok: boolean;
+  requested_url: string;
+  final_url: string;
+  status: number;
+  can_proceed: boolean;
+  risk: "low" | "medium" | "high";
+  redirects: RedirectHop[];
+  checks: DetectionChecks;
+  latency_ms: number;
+  proof: {
+    title: string | null;
+    html_length: number;
+    timestamp: string;
+  };
+};
+
+const MAX_BODY_BYTES = 1_000_000;
+const FETCH_TIMEOUT_MS = 8_000;
+const MAX_REDIRECTS = 5;
+const RETRIES_PER_HOP = 2;
+const REPLAY_TTL_SECONDS = 86_400;
+const MOLTBOOK_CACHE_TTL_SECONDS = 300;
+const USER_AGENTS = [
+  "AgentPreflight/1.0 (+https://preflight.lorensaisolutions.com)",
+  "Googlebot/2.1 (+http://www.google.com/bot.html)",
+  "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/138.0.0.0 Safari/537.36",
+] as const;
+
+const urlSchema = z
+  .url()
+  .transform((value) => new URL(value))
+  .refine((url) => url.protocol === "https:" || url.protocol === "http:", {
+    message: "Only http and https URLs are supported.",
+  })
+  .refine((url) => !url.username && !url.password, {
+    message: "URLs containing credentials are not allowed.",
+  })
+  .refine((url) => isPublicHostname(url.hostname), {
+    message: "Private, local, and reserved network targets are not allowed.",
+  })
+  .transform((url) => url.toString());
+
+const singleUrlBodySchema = z.object({ url: urlSchema }).strict();
+const batchUrlBodySchema = z
+  .object({ urls: z.array(urlSchema).min(1).max(10) })
+  .strict();
+const mcpRequestSchema = z.object({
+  jsonrpc: z.literal("2.0"),
+  id: z.union([z.string(), z.number(), z.null()]).optional(),
+  method: z.string(),
+  params: z.record(z.string(), z.unknown()).optional(),
+});
+
+const app = new Hono<AppEnv>();
+
+app.use("*", async (c, next) => {
+  const paymentSignature = c.req.header("PAYMENT-SIGNATURE");
+  const route = routeByPath(c.req.method, new URL(c.req.url).pathname);
+
+  if (!paymentSignature || !route) {
+    await next();
+    return;
+  }

@@ -1,0 +1,27 @@
+{
+  "name": "agent-preflight-edge-paywall",
+  "version": "2.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "build": "node scripts/assemble-index.mjs",
+    "check": "npm run build && wrangler types && tsc --noEmit && wrangler deploy --dry-run",
+    "deploy": "wrangler deploy",
+    "dev": "wrangler dev --test-scheduled"
+  },
+  "dependencies": {
+    "@coinbase/cdp-sdk": "1.54.0",
+    "@x402/core": "2.20.0",
+    "@x402/evm": "2.20.0",
+    "@x402/extensions": "2.20.0",
+    "@x402/hono": "2.20.0",
+    "@x402/svm": "2.20.0",
+    "hono": "4.12.32",
+    "zod": "4.4.3"
+  },
+  "devDependencies": {
+    "@types/node": "24.10.13",
+    "typescript": "7.0.2",
+    "wrangler": "4.116.0"
+  }
+}
