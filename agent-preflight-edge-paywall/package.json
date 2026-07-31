@@ -1,0 +1,11 @@
+{
+  "name": "agent-preflight-edge-paywall",
+  "version": "2.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "build": "node scripts/assemble.mjs",
+    "check": "npm run build && node --check dist/index.js",
+    "verify:source": "npm run build && node scripts/verify-source.mjs"
+  }
+}
