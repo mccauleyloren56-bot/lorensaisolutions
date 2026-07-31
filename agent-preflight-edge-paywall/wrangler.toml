@@ -37,9 +37,3 @@ MOLTBOOK_VERIFY_URL = "https://www.moltbook.com/api/v1/agents/verify-identity"
 [observability]
 enabled = true
 head_sampling_rate = 1
-
-[secrets]
-required = [
-  "CDP_API_KEY_ID",
-  "CDP_API_KEY_SECRET"
-]
