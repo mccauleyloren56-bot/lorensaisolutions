@@ -1,0 +1,32 @@
+# Copy the LIVE worker's binding IDs/service targets from Cloudflare before using.
+# Do not deploy this example file as-is: omitting production bindings can break the live Worker.
+name = "agent-preflight-edge-paywall"
+main = "dist/index.js"
+compatibility_date = "2026-07-31"
+compatibility_flags = ["nodejs_compat"]
+workers_dev = true
+
+[build]
+command = "npm run build"
+
+[vars]
+PUBLIC_BASE_URL = "https://preflight.lorensaisolutions.com"
+FACILITATOR_URL = "https://api.cdp.coinbase.com/platform/v2/x402"
+X402_NETWORK = "eip155:8453"
+X402_ASSET = "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913"
+X402_PAY_TO = "0xC83C478cc3c95d8913b90D6e55C7019aE6D04B43"
+MOLTBOOK_ENABLED = "false"
+
+# Production bindings that must be copied from the live Worker:
+# [[kv_namespaces]]
+# binding = "STATE"
+# id = "<LIVE_KV_NAMESPACE_ID>"
+#
+# [[services]]
+# binding = "THREADS_AGENT"
+# service = "<LIVE_THREADS_AGENT_SERVICE>"
+#
+# Secrets must be added through Wrangler/Cloudflare, never committed:
+# CDP_API_KEY_ID
+# CDP_API_KEY_SECRET
+# MOLTBOOK_APP_KEY (only if enabled)
