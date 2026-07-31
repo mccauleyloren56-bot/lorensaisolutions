@@ -1,0 +1,150 @@
+    ok: evidence.status >= 200 && evidence.status < 400,
+    requested_url: evidence.requested_url,
+    final_url: evidence.final_url,
+    status: evidence.status,
+    can_proceed: canProceed,
+    risk,
+    redirects: evidence.redirects,
+    checks,
+    latency_ms: latencyMs,
+    proof: {
+      title: evidence.title,
+      html_length: evidence.html_length,
+      timestamp: new Date().toISOString(),
+    },
+  };
+}
+
+function detectSignals(html: string, status: number, contentType: string | null): DetectionChecks {
+  const normalized = html.toLowerCase();
+  const login =
+    /\b(sign[\s-]?in|log[\s-]?in|authentication required|account required)\b/i.test(html) ||
+    /type=["']password["']/i.test(html);
+  const captcha =
+    /\b(captcha|recaptcha|hcaptcha|turnstile|verify you are human)\b/i.test(html);
+  const paywall =
+    /\b(subscribe to continue|subscription required|members only|unlock this article|purchase access)\b/i.test(
+      html,
+    );
+  const botChallenge =
+    status === 403 ||
+    status === 429 ||
+    /\b(checking your browser|attention required|access denied|bot detection|challenge-platform)\b/i.test(
+      html,
+    );
+  const price = extractPrice(html);
+  const outOfStock = /\b(out of stock|sold out|currently unavailable|unavailable for purchase)\b/i.test(html);
+  const inStock = /\b(in stock|available now|ships within|ready to ship)\b/i.test(html);
+  const addToCart =
+    /\b(add to cart|add to bag|buy now|checkout)\b/i.test(html) ||
+    /name=["']add["']/i.test(html);
+  const apiSignals = [
+    normalized.includes("openapi") ? "openapi" : null,
+    normalized.includes("swagger") ? "swagger" : null,
+    normalized.includes("graphql") ? "graphql" : null,
+    normalized.includes("application/json") || contentType?.includes("application/json")
+      ? "json"
+      : null,
+    normalized.includes("/mcp") || normalized.includes("model context protocol") ? "mcp" : null,
+    normalized.includes("/api/") ? "api_path" : null,
+  ].filter((signal): signal is string => signal !== null);
+
+  return {
+    login,
+    captcha,
+    paywall,
+    bot_challenge: botChallenge,
+    price,
+    availability: outOfStock ? "out_of_stock" : inStock ? "in_stock" : "unknown",
+    add_to_cart: addToCart,
+    openapi: apiSignals.includes("openapi") || apiSignals.includes("swagger"),
+    api_signals: [...new Set(apiSignals)],
+  };
+}
+
+function calculateRisk(
+  status: number,
+  redirectCount: number,
+  checks: DetectionChecks,
+): "low" | "medium" | "high" {
+  let score = 0;
+  if (status >= 400) score += 3;
+  if (checks.captcha || checks.bot_challenge) score += 3;
+  if (checks.paywall) score += 2;
+  if (checks.login) score += 1;
+  if (checks.availability === "out_of_stock") score += 2;
+  if (redirectCount >= 3) score += 1;
+  return score >= 4 ? "high" : score >= 2 ? "medium" : "low";
+}
+
+function authenticatedFacilitator(env: Env): FacilitatorClient {
+  return createCdpFacilitatorClient({
+    apiKeyId: env.CDP_API_KEY_ID,
+    apiKeySecret: env.CDP_API_KEY_SECRET,
+    baseUrl: env.FACILITATOR_URL,
+  });
+}
+
+async function sendTelegram(
+  env: Env,
+  input: FulfillmentMeta & { buyer: string; txHash: string },
+): Promise<void> {
+  await env.THREADS_AGENT.fetch("https://threads-agent/internal/agent-preflight-alert", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      resourceName: input.tool,
+      resourceLabel: input.tool,
+      amountUsd: input.price.replace(/^\$/, ""),
+      network: env.X402_NETWORK,
+      payer: input.buyer,
+      targetHost: input.domain,
+      pageType: input.risk ?? "unknown",
+      recommendedAction:
+        input.canProceed === undefined
+          ? "unknown"
+          : input.canProceed
+            ? "can_proceed"
+            : "do_not_proceed",
+      transaction: input.txHash,
+      settledAt: new Date().toISOString(),
+    }),
+  }).catch(() => undefined);
+}
+
+async function runHourlyHealthcheck(env: Env): Promise<void> {
+  const standardRoute = requireRoute("preflight");
+  const premiumRoute = requireRoute("premium_preflight");
+  const checks: Array<{ path: string; expectedStatus: number; expectedPrice?: string }> = [
+    { path: "/", expectedStatus: 200 },
+    { path: "/mcp", expectedStatus: 200 },
+    { path: "/openapi.json", expectedStatus: 200 },
+    { path: "/.well-known/x402.json", expectedStatus: 200 },
+    {
+      path: "/v1/preflight?url=https://example.com&intent=healthcheck",
+      expectedStatus: 402,
+      expectedPrice: standardRoute.price,
+    },
+    {
+      path: "/v1/premium-preflight?url=https://example.com&intent=healthcheck",
+      expectedStatus: 402,
+      expectedPrice: premiumRoute.price,
+    },
+  ];
+
+  const results = await Promise.all(
+    checks.map(async (check) => {
+      const response = await fetch(`${env.PUBLIC_BASE_URL}${check.path}`, {
+        headers: { Accept: "application/json" },
+        signal: AbortSignal.timeout(FETCH_TIMEOUT_MS),
+      });
+      const body = await readBoundedText(response, 128_000);
+      const correctPayment =
+        check.expectedStatus !== 402 ||
+        (body.includes(check.expectedPrice ?? "") &&
+          body.includes(env.X402_PAY_TO) &&
+          body.includes(env.X402_NETWORK) &&
+          body.includes(env.X402_ASSET) &&
+          response.headers.has("PAYMENT-REQUIRED"));
+      return {
+        path: check.path,
