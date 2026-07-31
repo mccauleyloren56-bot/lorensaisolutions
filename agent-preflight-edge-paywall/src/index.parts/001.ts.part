@@ -1,0 +1,150 @@
+
+  const signatureHash = await sha256(paymentSignature);
+  const replayKey = `replay:${signatureHash}`;
+  const cached = await c.env.STATE.get(replayKey, "json") as
+    | {
+        status: number;
+        headers: Record<string, string>;
+        body: string;
+      }
+    | null;
+
+  if (cached) {
+    c.res = new Response(cached.body, {
+      status: cached.status,
+      headers: {
+        ...cached.headers,
+        "X-Agent-Preflight-Replay": "cached",
+      },
+    });
+    return;
+  }
+
+  await next();
+
+  if (c.res.status === 200 && c.res.headers.has("PAYMENT-RESPONSE")) {
+    const cloned = c.res.clone();
+    const body = await cloned.text();
+    const headers: Record<string, string> = {
+      "Content-Type": cloned.headers.get("Content-Type") ?? "application/json",
+      "PAYMENT-RESPONSE": cloned.headers.get("PAYMENT-RESPONSE") ?? "",
+    };
+    c.executionCtx.waitUntil(
+      c.env.STATE.put(
+        replayKey,
+        JSON.stringify({ status: cloned.status, headers, body }),
+        { expirationTtl: REPLAY_TTL_SECONDS },
+      ),
+    );
+  }
+});
+
+app.use("*", async (c, next) => {
+  const identity = c.req.header("X-Moltbook-Identity");
+  const moltbookEnabled = String(c.env.MOLTBOOK_ENABLED) === "true";
+  const moltbookKey = (c.env as Env & { MOLTBOOK_APP_KEY?: string }).MOLTBOOK_APP_KEY;
+
+  if (!identity || !moltbookEnabled || !moltbookKey) {
+    await next();
+    return;
+  }
+
+  const identityHash = await sha256(identity);
+  const cacheKey = `moltbook:cache:${identityHash}`;
+  const cached = await c.env.STATE.get(cacheKey, "json") as MoltbookAgent | null;
+
+  if (cached) {
+    c.set("moltbookAgent", cached);
+    await next();
+    return;
+  }
+
+  const response = await fetch(c.env.MOLTBOOK_VERIFY_URL, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      "X-Moltbook-App-Key": moltbookKey,
+    },
+    body: JSON.stringify({
+      token: identity,
+      agent_id: c.env.MOLTBOOK_AGENT_ID,
+    }),
+    signal: AbortSignal.timeout(FETCH_TIMEOUT_MS),
+  }).catch(() => null);
+
+  if (!response?.ok) {
+    return c.json({ error: "INVALID_MOLTBOOK_IDENTITY" }, 401);
+  }
+
+  const raw = await response.json().catch(() => null);
+  if (!raw || typeof raw !== "object") {
+    return c.json({ error: "INVALID_MOLTBOOK_IDENTITY" }, 401);
+  }
+
+  const rawRecord = raw as Record<string, unknown>;
+  const agentSource =
+    rawRecord.agent && typeof rawRecord.agent === "object"
+      ? rawRecord.agent as Record<string, unknown>
+      : rawRecord;
+  const agent: MoltbookAgent = {
+    id: stringOrUndefined(agentSource.id),
+    name: stringOrUndefined(agentSource.name),
+    username: stringOrUndefined(agentSource.username),
+    owner: stringOrUndefined(agentSource.owner),
+    verified: booleanOrUndefined(agentSource.verified) ?? true,
+    raw: rawRecord,
+  };
+
+  c.set("moltbookAgent", agent);
+  c.executionCtx.waitUntil(
+    c.env.STATE.put(cacheKey, JSON.stringify(agent), {
+      expirationTtl: MOLTBOOK_CACHE_TTL_SECONDS,
+    }),
+  );
+  await next();
+});
+
+app.use("/v1/*", async (c, next) => {
+  const route = routeByPath(c.req.method, new URL(c.req.url).pathname);
+  if (!route) {
+    await next();
+    return;
+  }
+
+  const facilitator = authenticatedFacilitator(c.env);
+  const resourceServer = new x402ResourceServer(facilitator).register(
+    c.env.X402_NETWORK,
+    new ExactEvmScheme(),
+  );
+
+  resourceServer.onAfterSettle(async ({ result }) => {
+    const transaction = stringOrUndefined(result.transaction) ?? "unknown";
+    const payer = stringOrUndefined(result.payer) ?? "unknown";
+    const dedupKey = `notify:dedup:${transaction}`;
+    const sent = await c.env.STATE.get(dedupKey);
+
+    if (!sent) {
+      await c.env.STATE.put(dedupKey, "1", { expirationTtl: REPLAY_TTL_SECONDS });
+      const meta = c.get("fulfillmentMeta") ?? {
+        tool: route.id,
+        price: route.price,
+        domain: "unknown",
+      };
+      c.executionCtx.waitUntil(
+        sendTelegram(c.env, {
+          ...meta,
+          buyer: payer,
+          txHash: transaction,
+        }),
+      );
+    }
+  });
+
+  resourceServer.onVerifiedPaymentCanceled(async ({ reason }) => {
+    console.warn(JSON.stringify({
+      event: "x402_settlement_canceled",
+      route: route.id,
+      reason,
+    }));
+  });
+
