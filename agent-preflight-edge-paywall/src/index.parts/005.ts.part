@@ -78,11 +78,96 @@ function calculateRisk(
 }
 
 function authenticatedFacilitator(env: Env): FacilitatorClient {
-  return createCdpFacilitatorClient({
-    apiKeyId: env.CDP_API_KEY_ID,
-    apiKeySecret: env.CDP_API_KEY_SECRET,
-    baseUrl: env.FACILITATOR_URL,
+  const facilitatorUrl = new URL(env.FACILITATOR_URL);
+  const basePath = facilitatorUrl.pathname.replace(/\/$/, "");
+
+  return new HTTPFacilitatorClient({
+    url: env.FACILITATOR_URL,
+    createAuthHeaders: async () => ({
+      verify: {
+        Authorization: `Bearer ${await createCdpJwt(
+          env.CDP_API_KEY_ID,
+          env.CDP_API_KEY_SECRET,
+          "POST",
+          facilitatorUrl.host,
+          `${basePath}/verify`,
+        )}`,
+      },
+      settle: {
+        Authorization: `Bearer ${await createCdpJwt(
+          env.CDP_API_KEY_ID,
+          env.CDP_API_KEY_SECRET,
+          "POST",
+          facilitatorUrl.host,
+          `${basePath}/settle`,
+        )}`,
+      },
+      supported: {
+        Authorization: `Bearer ${await createCdpJwt(
+          env.CDP_API_KEY_ID,
+          env.CDP_API_KEY_SECRET,
+          "GET",
+          facilitatorUrl.host,
+          `${basePath}/supported`,
+        )}`,
+      },
+    }),
   });
+}
+
+async function createCdpJwt(
+  apiKeyId: string,
+  apiKeySecret: string,
+  method: "GET" | "POST",
+  host: string,
+  path: string,
+): Promise<string> {
+  const decoded = Buffer.from(apiKeySecret.trim(), "base64");
+  if (decoded.byteLength !== 64) {
+    throw new Error("CDP_API_KEY_SECRET_FORMAT_UNSUPPORTED");
+  }
+
+  const seed = decoded.subarray(0, 32);
+  const publicKey = decoded.subarray(32);
+  const key = await globalThis.crypto.subtle.importKey(
+    "jwk",
+    {
+      kty: "OKP",
+      crv: "Ed25519",
+      d: seed.toString("base64url"),
+      x: publicKey.toString("base64url"),
+    },
+    { name: "Ed25519" },
+    false,
+    ["sign"],
+  );
+
+  const nonceBytes = new Uint8Array(16);
+  globalThis.crypto.getRandomValues(nonceBytes);
+  const now = Math.floor(Date.now() / 1000);
+  const header = {
+    alg: "EdDSA",
+    kid: apiKeyId,
+    typ: "JWT",
+    nonce: Buffer.from(nonceBytes).toString("hex"),
+  };
+  const payload = {
+    sub: apiKeyId,
+    iss: "cdp",
+    uris: [`${method} ${host}${path}`],
+    iat: now,
+    nbf: now,
+    exp: now + 120,
+  };
+  const encodedHeader = Buffer.from(JSON.stringify(header)).toString("base64url");
+  const encodedPayload = Buffer.from(JSON.stringify(payload)).toString("base64url");
+  const signingInput = `${encodedHeader}.${encodedPayload}`;
+  const signature = await globalThis.crypto.subtle.sign(
+    { name: "Ed25519" },
+    key,
+    new TextEncoder().encode(signingInput),
+  );
+  return `${signingInput}.${Buffer.from(signature).toString("base64url")}`;
 }
 
 async function sendTelegram(
