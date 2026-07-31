@@ -26,3 +26,5 @@ Expected atomic amounts:
 ```
 
 No paid mainnet test is required for this pricing/discovery deployment. Do not change `payTo`, the service binding, the KV namespace, or any private credential.
+
+Deployment trigger recorded: 2026-07-31.
