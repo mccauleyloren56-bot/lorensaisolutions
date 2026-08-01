@@ -485,6 +485,7 @@ export function x402Discovery(): Record<string, unknown> {
     name: SERVICE.name,
     description: "Per-request URL intelligence and commerce preflight for autonomous agents.",
     facilitator: SERVICE.facilitatorUrl,
+    smithery: "https://smithery.ai/servers/mccauleyloren56/agent-preflight",
     accepts: ROUTES.map((route) => ({
       scheme: "exact",
       network: SERVICE.network,
