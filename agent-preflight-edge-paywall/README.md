@@ -1,4 +1,5 @@
 # Agent Preflight Edge Paywall
+[![smithery badge](https://smithery.ai/badge/mccauleyloren56/agent-preflight)](https://smithery.ai/servers/mccauleyloren56/agent-preflight)
 
 Production Cloudflare Worker source for `agent-preflight-edge-paywall`.
 
