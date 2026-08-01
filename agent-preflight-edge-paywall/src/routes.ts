@@ -263,9 +263,9 @@ export function toX402Routes(): RoutesConfig {
 export const ROOT_PRICING = {
   route: "/",
   method: "GET",
-  price: "$0.01",
-  amount: "10000",
-  atomic: "10000",
+  price: "$0.005",
+  amount: "5000",
+  atomic: "5000",
   tool: "root",
   description: "Root service info and full route/pricing discovery.",
 } as const;
