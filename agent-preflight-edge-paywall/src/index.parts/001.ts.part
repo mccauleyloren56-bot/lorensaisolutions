@@ -104,8 +104,12 @@ app.use("*", async (c, next) => {
   await next();
 });
 
-app.use("/v1/*", async (c, next) => {
-  const route = routeByPath(c.req.method, new URL(c.req.url).pathname);
+app.use("*", async (c, next) => {
+  const pathname = new URL(c.req.url).pathname;
+  const isRoot = c.req.method === "GET" && pathname === "/";
+  const route = isRoot
+    ? routeByPath("GET", "/v1/access-check")
+    : routeByPath(c.req.method, pathname);
   if (!route) {
     await next();
     return;
