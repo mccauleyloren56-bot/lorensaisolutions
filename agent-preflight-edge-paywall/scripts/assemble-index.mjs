@@ -6,7 +6,7 @@ import path from "node:path";
 const projectRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const partsDir = path.join(projectRoot, "src", "index.parts");
 const outputPath = path.join(projectRoot, "src", "index.generated.ts");
-const expectedSha256 = "c24b76e65c0006c0fa27965810de94162b03bbc0111e95d6cfa04d769062032b";
+const expectedSha256 = "c6d4f80a2d14ebd3af0d955808c5bde4f3c91fc0c5c2b2bd558f97d4a99a3553";
 
 const files = (await readdir(partsDir))
   .filter((name) => name.endsWith(".ts.part"))
