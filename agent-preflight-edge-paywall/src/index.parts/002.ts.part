@@ -27,7 +27,7 @@ app.get("/", (c) =>
       price: route.price,
       title: route.title,
       example: `${route.method} ${routeExample(route)}`,
-    }),
+    })),
     discovery: {
       openapi: "/openapi.json",
       mcp: "/mcp",
