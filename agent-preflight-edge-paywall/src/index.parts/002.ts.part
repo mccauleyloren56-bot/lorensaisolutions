@@ -1,6 +1,6 @@
-  const x402Routes = toX402Routes();
+const x402Routes = toX402Routes() as Record<string, X402RouteConfig>;
   if (isRoot) {
-   const x402Routes = toX402Routes() as Record<string, X402RouteConfig>;
+    const accessCheckConfig = x402Routes["GET /v1/access-check"];
     if (!accessCheckConfig) {
       return c.json({ error: "ROOT_PAYMENT_CONFIGURATION_MISSING" }, 500);
     }
