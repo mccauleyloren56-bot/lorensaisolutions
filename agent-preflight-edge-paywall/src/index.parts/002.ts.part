@@ -1,10 +1,6 @@
 const x402Routes = toX402Routes() as Record<string, X402RouteConfig>;
   if (isRoot) {
-    const accessCheckConfig = x402Routes["GET /v1/access-check"];
-    if (!accessCheckConfig) {
-      return c.json({ error: "ROOT_PAYMENT_CONFIGURATION_MISSING" }, 500);
-    }
-    x402Routes["GET /"] = accessCheckConfig;
+    Object.assign(x402Routes, toRootX402Route());
   }
 
   const middleware = paymentMiddleware(
