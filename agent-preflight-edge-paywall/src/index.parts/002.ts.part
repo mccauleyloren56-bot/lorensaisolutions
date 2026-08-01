@@ -8,6 +8,34 @@
   return middleware(c, next);
 });
 
+app.use("/", async (c, next) => {
+  if (c.req.method !== "GET") {
+    await next();
+    return;
+  }
+
+  const facilitator = authenticatedFacilitator(c.env);
+  const resourceServer = new x402ResourceServer(facilitator).register(
+    c.env.X402_NETWORK,
+    new ExactEvmScheme(),
+  );
+  const routes = toX402Routes();
+  const accessCheckRoute = routes["GET /v1/access-check"];
+
+  if (!accessCheckRoute) {
+    return c.json({ error: "ROOT_PAYMENT_CONFIGURATION_MISSING" }, 500);
+  }
+
+  const middleware = paymentMiddleware(
+    { "GET /": accessCheckRoute },
+    resourceServer,
+    undefined,
+    undefined,
+    true,
+  );
+  return middleware(c, next);
+});
+
 app.get("/", (c) =>
   c.json({
     ok: true,
