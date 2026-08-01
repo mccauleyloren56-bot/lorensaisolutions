@@ -253,7 +253,67 @@ export function toX402Routes(): RoutesConfig {
   );
 }
 
-export function openApiDocument(): Record<string, unknown> {
+/**
+ * Root ("/") is priced independently from the /v1/ tools below. It is not
+ * part of PRICING_REGISTRY/ROUTES because its path ("/") and its lack of a
+ * ?url= query param don't fit the /v1/* route shape those drive (OpenAPI
+ * params, MCP tool list, resource templates, etc). This is the single
+ * source of truth for root's price.
+ */
+export const ROOT_PRICING = {
+  route: "/",
+  method: "GET",
+  price: "$0.01",
+  amount: "10000",
+  atomic: "10000",
+  tool: "root",
+  description: "Root service info and full route/pricing discovery.",
+} as const;
+
+export function toRootX402Route(): RoutesConfig {
+  const config: X402RouteConfig = {
+    accepts: {
+      scheme: "exact",
+      price: ROOT_PRICING.price,
+      network: SERVICE.network,
+      payTo: SERVICE.payTo,
+      maxTimeoutSeconds: SERVICE.maxTimeoutSeconds,
+    },
+    description: ROOT_PRICING.description,
+    mimeType: "application/json",
+    serviceName: SERVICE.name,
+    tags: ["root", "discovery"],
+    unpaidResponseBody: (context) => ({
+      contentType: "application/json",
+      body: {
+        error: "PAYMENT_REQUIRED",
+        x402Version: SERVICE.x402Version,
+        tool: ROOT_PRICING.tool,
+        price: ROOT_PRICING.price,
+        amount: ROOT_PRICING.atomic,
+        atomic: ROOT_PRICING.atomic,
+        network: SERVICE.network,
+        asset: SERVICE.asset,
+        assetName: SERVICE.assetName,
+        payTo: SERVICE.payTo,
+        resource: context.adapter.getUrl(),
+        facilitator: SERVICE.facilitatorUrl,
+        paymentHeader: "PAYMENT-SIGNATURE",
+      },
+    }),
+    settlementFailedResponseBody: (_context, result) => ({
+      contentType: "application/json",
+      body: {
+        error: "PAYMENT_SETTLEMENT_FAILED",
+        tool: ROOT_PRICING.tool,
+        price: ROOT_PRICING.price,
+        retryable: true,
+        details: result,
+      },
+    }),
+  };
+  return { "GET /": config };
+}export function openApiDocument(): Record<string, unknown> {
   const paths = Object.fromEntries(
     ROUTES.map((route) => {
       const requestBody =
