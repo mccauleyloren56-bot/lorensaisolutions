@@ -1,4 +1,5 @@
 import type { RouteConfig as X402RouteConfig, RoutesConfig } from "@x402/core/server";
+import { declareDiscoveryExtension } from "@x402/extensions/bazaar";
 
 export const SERVICE = {
   name: "Agent Preflight Edge Paywall",
