@@ -143,12 +143,36 @@ app.post("/mcp/tools/call", async (c) => {
   return app.fetch(wrappedRequest, c.env, c.executionCtx);
 });
 
+async function trackChange(
+  c: Context<AppEnv>,
+  url: string,
+  result: PreflightResult,
+): Promise<{ changed: boolean; first_observation: boolean }> {
+  const fingerprint = await sha256(
+    JSON.stringify({
+      final_url: result.final_url,
+      status: result.status,
+      title: result.proof.title,
+      html_length: result.proof.html_length,
+      checks: result.checks,
+    }),
+  );
+  const key = `change:${await sha256(url)}`;
+  const previous = await c.env.STATE.get(key);
+  c.executionCtx.waitUntil(c.env.STATE.put(key, fingerprint));
+  return {
+    changed: previous !== null && previous !== fingerprint,
+    first_observation: previous === null,
+  };
+}
+
 const paidHandlers: Record<RouteId, Handler<AppEnv>> = {
 access_check: async (c) => {
   const url = parseUrlQuery(c.req.query("url"));
   if (url instanceof Response) return url;
   const result = await standardPreflight(url);
   setFulfillmentMeta(c, "access_check", url, result);
+  const change = await trackChange(c, url, result);
   return c.json({
     url,
     final_url: result.final_url,
