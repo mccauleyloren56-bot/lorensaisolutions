@@ -22,7 +22,7 @@ id = "0d42de00fef54d13a35ae3fb0e935019"
 [[services]]
 binding = "THREADS_AGENT"
 service = "threads-miniapp-agent"
-
+environment = "production"
 [vars]
 X402_NETWORK = "eip155:8453"
 X402_ASSET = "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913"
