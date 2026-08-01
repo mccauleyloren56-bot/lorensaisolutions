@@ -525,6 +525,8 @@ export function agentCard(): Record<string, unknown> {
     description: "Pre-transaction URL intelligence, access validation, and commerce risk.",
     url: SERVICE.baseUrl,
     version: SERVICE.version,
+    homepage: SERVICE.baseUrl,
+    smithery: "https://smithery.ai/servers/mccauleyloren56/agent-preflight",
     protocolVersion: "0.3.0",
     capabilities: { streaming: false, pushNotifications: false },
     defaultInputModes: ["application/json"],
