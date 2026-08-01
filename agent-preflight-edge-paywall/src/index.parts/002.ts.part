@@ -1,5 +1,14 @@
+  const x402Routes = toX402Routes();
+  if (isRoot) {
+    const accessCheckConfig = x402Routes["GET /v1/access-check"];
+    if (!accessCheckConfig) {
+      return c.json({ error: "ROOT_PAYMENT_CONFIGURATION_MISSING" }, 500);
+    }
+    x402Routes["GET /"] = accessCheckConfig;
+  }
+
   const middleware = paymentMiddleware(
-    toX402Routes(),
+    x402Routes,
     resourceServer,
     undefined,
     undefined,
