@@ -5,6 +5,7 @@ import { HTTPFacilitatorClient, type FacilitatorClient, type RouteConfig as X402
 import { ExactEvmScheme } from "@x402/evm/exact/server";
 import { Buffer } from "node:buffer";
 import {
+ ROOT_PRICING,
   ROUTES,
   SERVICE,
   agentCard,
@@ -16,6 +17,7 @@ import {
   routeExample,
   serverDocument,
   skillMarkdown,
+  toRootX402Route,
   toX402Routes,
   x402Discovery,
   type RouteDefinition,
