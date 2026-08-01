@@ -259,6 +259,7 @@ export function toX402Routes(): RoutesConfig {
         mimeType: "application/json",
         serviceName: SERVICE.name,
         tags: [...route.tags],
+        extensions: { ...declareDiscoveryExtension(bazaarInputSchema(route)) },
         unpaidResponseBody: (context) => ({
           contentType: "application/json",
           body: {
