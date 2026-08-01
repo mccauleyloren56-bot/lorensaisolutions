@@ -107,10 +107,8 @@ app.use("*", async (c, next) => {
 app.use("*", async (c, next) => {
   const pathname = new URL(c.req.url).pathname;
   const isRoot = c.req.method === "GET" && pathname === "/";
-  const route = isRoot
-    ? routeByPath("GET", "/v1/access-check")
-    : routeByPath(c.req.method, pathname);
-  if (!route) {
+  const route = isRoot ? undefined : routeByPath(c.req.method, pathname);
+  if (!isRoot && !route) {
     await next();
     return;
   }
@@ -130,8 +128,8 @@ app.use("*", async (c, next) => {
     if (!sent) {
       await c.env.STATE.put(dedupKey, "1", { expirationTtl: REPLAY_TTL_SECONDS });
       const meta = c.get("fulfillmentMeta") ?? {
-        tool: route.id,
-        price: route.price,
+        tool: isRoot ? ROOT_PRICING.tool : route!.id,
+        price: isRoot ? ROOT_PRICING.price : route!.price,
         domain: "unknown",
       };
       c.executionCtx.waitUntil(
@@ -147,8 +145,7 @@ app.use("*", async (c, next) => {
   resourceServer.onVerifiedPaymentCanceled(async ({ reason }) => {
     console.warn(JSON.stringify({
       event: "x402_settlement_canceled",
-      route: route.id,
+      route: isRoot ? ROOT_PRICING.tool : route!.id,
       reason,
     }));
   });
-
