@@ -88,7 +88,7 @@ export const PRICING_REGISTRY = {
 
 export type RouteId = keyof typeof PRICING_REGISTRY;
 
-const ROUTE_METADATA: Record
+const ROUTE_METADATA: Record<
   RouteId,
   {
     title: string;
@@ -146,7 +146,7 @@ export type RouteDefinition = {
 };
 
 export const ROUTES: readonly RouteDefinition[] = (
-  Object.entries(PRICING_REGISTRY) as Array
+  Object.entries(PRICING_REGISTRY) as Array<
     [RouteId, (typeof PRICING_REGISTRY)[RouteId]]
   >
 ).map(([id, pricing]) => {
