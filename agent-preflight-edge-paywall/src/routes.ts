@@ -201,6 +201,44 @@ export function routeResourceTemplate(route: RouteDefinition): string {
 
 export function routeAbsoluteExample(route: RouteDefinition): string {
   return `${SERVICE.baseUrl}${routeExample(route)}`;
+  function bazaarInputSchema(route: RouteDefinition): { input: Record<string, unknown>; inputSchema: Record<string, unknown> } {
+  if (route.input === "batch_urls_json") {
+    return {
+      input: { urls: ["https://example.com"] },
+      inputSchema: {
+        properties: {
+          urls: {
+            type: "array",
+            items: { type: "string" },
+            description: "Up to 10 absolute http/https URLs to check in one paid request",
+          },
+        },
+        required: ["urls"],
+      },
+    };
+  }
+  if (route.id === "preflight") {
+    return {
+      input: { url: "https://example.com", intent: "research" },
+      inputSchema: {
+        properties: {
+          url: { type: "string", description: "Absolute http/https URL to check" },
+          intent: { type: "string", description: "Optional intent hint, defaults to research" },
+        },
+        required: ["url"],
+      },
+    };
+  }
+  return {
+    input: { url: "https://example.com" },
+    inputSchema: {
+      properties: {
+        url: { type: "string", description: "Absolute http/https URL to check" },
+      },
+      required: ["url"],
+    },
+  };
+}
 }
 
 export function toX402Routes(): RoutesConfig {
