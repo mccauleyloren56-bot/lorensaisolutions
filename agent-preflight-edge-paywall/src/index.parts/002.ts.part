@@ -35,6 +35,8 @@ app.get("/", (c) =>
       llms: "/llms.txt",
       x402: "/.well-known/x402.json",
       agentCard: "/.well-known/agent-card.json",
+      smithery: "https://smithery.ai/servers/mccauleyloren56/agent-preflight",
+    },
     },
   }),
 );
