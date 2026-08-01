@@ -219,6 +219,7 @@ export function routeAbsoluteExample(route: RouteDefinition): string {
   }
   if (route.id === "preflight") {
     return {
+      extensions: { ...declareDiscoveryExtension(bazaarInputSchema(route)) },
       input: { url: "https://example.com", intent: "research" },
       inputSchema: {
         properties: {
