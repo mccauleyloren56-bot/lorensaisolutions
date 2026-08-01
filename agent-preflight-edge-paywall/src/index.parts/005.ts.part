@@ -199,9 +199,11 @@ async function sendTelegram(
 
 async function runHourlyHealthcheck(env: Env): Promise<void> {
   const standardRoute = requireRoute("preflight");
-  const premiumRoute = requireRoute("premium_preflight");
-  const checks: Array<{ path: string; expectedStatus: number; expectedPrice?: string }> = [
-    { path: "/", expectedStatus: 200 },
+  const rootRoute = requireRoute("access_check");
+    const standardRoute = requireRoute("preflight");
+    const premiumRoute = requireRoute("premium_preflight");
+    const checks: Array<{ path: string; expectedStatus: number; expectedPrice?: string }> = [
+      { path: "/", expectedStatus: 402, expectedPrice: rootRoute.price },
     { path: "/mcp", expectedStatus: 200 },
     { path: "/openapi.json", expectedStatus: 200 },
     { path: "/.well-known/x402.json", expectedStatus: 200 },
