@@ -88,7 +88,7 @@ export const PRICING_REGISTRY = {
 
 export type RouteId = keyof typeof PRICING_REGISTRY;
 
-const ROUTE_METADATA: Record<
+const ROUTE_METADATA: Record
   RouteId,
   {
     title: string;
@@ -146,7 +146,7 @@ export type RouteDefinition = {
 };
 
 export const ROUTES: readonly RouteDefinition[] = (
-  Object.entries(PRICING_REGISTRY) as Array<
+  Object.entries(PRICING_REGISTRY) as Array
     [RouteId, (typeof PRICING_REGISTRY)[RouteId]]
   >
 ).map(([id, pricing]) => {
@@ -201,7 +201,9 @@ export function routeResourceTemplate(route: RouteDefinition): string {
 
 export function routeAbsoluteExample(route: RouteDefinition): string {
   return `${SERVICE.baseUrl}${routeExample(route)}`;
-  function bazaarInputSchema(route: RouteDefinition): { input: Record<string, unknown>; inputSchema: Record<string, unknown> } {
+}
+
+function bazaarInputSchema(route: RouteDefinition): { input: Record<string, unknown>; inputSchema: Record<string, unknown> } {
   if (route.input === "batch_urls_json") {
     return {
       input: { urls: ["https://example.com"] },
@@ -219,7 +221,6 @@ export function routeAbsoluteExample(route: RouteDefinition): string {
   }
   if (route.id === "preflight") {
     return {
-      extensions: { ...declareDiscoveryExtension(bazaarInputSchema(route)) },
       input: { url: "https://example.com", intent: "research" },
       inputSchema: {
         properties: {
@@ -239,7 +240,6 @@ export function routeAbsoluteExample(route: RouteDefinition): string {
       required: ["url"],
     },
   };
-}
 }
 
 export function toX402Routes(): RoutesConfig {
@@ -324,6 +324,12 @@ export function toRootX402Route(): RoutesConfig {
     mimeType: "application/json",
     serviceName: SERVICE.name,
     tags: ["root", "discovery"],
+    extensions: {
+      ...declareDiscoveryExtension({
+        input: {},
+        inputSchema: { properties: {}, required: [] },
+      }),
+    },
     unpaidResponseBody: (context) => ({
       contentType: "application/json",
       body: {
@@ -354,7 +360,8 @@ export function toRootX402Route(): RoutesConfig {
     }),
   };
   return { "GET /": config };
-}export function openApiDocument(): Record<string, unknown> {
+}
+export function openApiDocument(): Record<string, unknown> {
   const paths = Object.fromEntries(
     ROUTES.map((route) => {
       const requestBody =
