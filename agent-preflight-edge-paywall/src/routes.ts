@@ -111,6 +111,24 @@ export const PRICING_REGISTRY = {
     tool: "agent402_mcp",
     description: "Agent402 tool marketplace proxy to agent402.tools/mcp settled on Base.",
   },
+  price_history: {
+    route: "/v1/price-history",
+    method: "GET",
+    price: "$0.04",
+    amount: "40000",
+    atomic: "40000",
+    tool: "price_history",
+    description: "E-commerce product price history and trend analysis for Amazon, eBay, and Shopify URLs.",
+  },
+  arbitrage_check: {
+    route: "/v1/arbitrage-check",
+    method: "POST",
+    price: "$0.04",
+    amount: "40000",
+    atomic: "40000",
+    tool: "arbitrage_check",
+    description: "Cross-platform e-commerce price arbitrage and deal margin checker.",
+  },
 } as const;
 
 export type RouteId = keyof typeof PRICING_REGISTRY;
@@ -172,6 +190,16 @@ const ROUTE_METADATA: Record<
     title: "Agent402 Commerce MCP",
     input: "single_url_json",
     tags: ["mcp", "agent402", "commerce", "x402", "base"],
+  },
+  price_history: {
+    title: "Price History Tracker",
+    input: "single_url_query",
+    tags: ["commerce", "price", "history", "ecommerce"],
+  },
+  arbitrage_check: {
+    title: "Arbitrage Margin Checker",
+    input: "single_url_json",
+    tags: ["arbitrage", "deals", "margin", "commerce"],
   },
 };
 
@@ -238,6 +266,10 @@ export function routeExample(route: RouteDefinition): string {
       return "/v1/agent-scrape-mcp";
     case "agent402_mcp":
       return "/v1/agent402-mcp";
+    case "price_history":
+      return "/v1/price-history?url=https://example.com/product";
+    case "arbitrage_check":
+      return "/v1/arbitrage-check";
   }
 }
 
