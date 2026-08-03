@@ -93,6 +93,15 @@ export const PRICING_REGISTRY = {
     tool: "one_cent_mcp",
     description: "1-cent micro-payment MCP tool proxy to 1cent.maxzoa.ru/mcp settled on Base.",
   },
+  agent_scrape_mcp: {
+    route: "/v1/agent-scrape-mcp",
+    method: "POST",
+    price: "$0.02",
+    amount: "20000",
+    atomic: "20000",
+    tool: "agent_scrape_mcp",
+    description: "Agent web scraping MCP tool proxy to agent-scrape.healingsunhaven.workers.dev/mcp settled on Base.",
+  },
 } as const;
 
 export type RouteId = keyof typeof PRICING_REGISTRY;
@@ -144,6 +153,11 @@ const ROUTE_METADATA: Record<
     title: "1-Cent Micro-Payment MCP",
     input: "single_url_json",
     tags: ["mcp", "micropayment", "1cent", "base"],
+  },
+  agent_scrape_mcp: {
+    title: "Agent Web Scrape MCP",
+    input: "single_url_json",
+    tags: ["mcp", "scraping", "web", "base"],
   },
 };
 
@@ -206,6 +220,8 @@ export function routeExample(route: RouteDefinition): string {
       return "/v1/premium-preflight?url=https://example.com";
     case "one_cent_mcp":
       return "/v1/1cent-mcp";
+    case "agent_scrape_mcp":
+      return "/v1/agent-scrape-mcp";
   }
 }
 

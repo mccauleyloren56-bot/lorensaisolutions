@@ -34,6 +34,7 @@ PUBLIC_BASE_URL = "https://preflight.lorensaisolutions.com"
 FACILITATOR_URL = "https://api.cdp.coinbase.com/platform/v2/x402"
 MOLTBOOK_VERIFY_URL = "https://www.moltbook.com/api/v1/agents/verify-identity"
 ONE_CENT_MCP_URL = "https://1cent.maxzoa.ru/mcp"
+AGENT_SCRAPE_MCP_URL = "https://agent-scrape.healingsunhaven.workers.dev/mcp"
 
 [observability]
 enabled = true
