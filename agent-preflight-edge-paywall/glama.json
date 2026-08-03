@@ -1,0 +1,16 @@
+{
+  "$schema": "https://glama.ai/mcp/schema.json",
+  "name": "agent-preflight-edge-paywall",
+  "description": "Edge-hosted MCP paywall gateway on Cloudflare for AI agent swarms, featuring 1-cent micro-payment tools ($0.01 USDC on Base), routing credit authorization and settlement through Base and Rabbi apps.",
+  "transport": "sse",
+  "url": "https://preflight.lorensaisolutions.com/mcp",
+  "tags": [
+    "paywall",
+    "mcp",
+    "micropayments",
+    "base",
+    "x402",
+    "preflight",
+    "agents"
+  ]
+}

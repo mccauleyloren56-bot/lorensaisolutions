@@ -84,6 +84,15 @@ export const PRICING_REGISTRY = {
     description:
       "Triple-user-agent intelligence with five-hop redirect evidence, retries, access controls, commerce risk, can_proceed, and proof.",
   },
+  one_cent_mcp: {
+    route: "/v1/1cent-mcp",
+    method: "POST",
+    price: "$0.01",
+    amount: "10000",
+    atomic: "10000",
+    tool: "one_cent_mcp",
+    description: "1-cent micro-payment MCP tool proxy to 1cent.maxzoa.ru/mcp settled on Base.",
+  },
 } as const;
 
 export type RouteId = keyof typeof PRICING_REGISTRY;
@@ -130,6 +139,11 @@ const ROUTE_METADATA: Record<
     title: "Premium Preflight",
     input: "single_url_query",
     tags: ["premium", "redirects", "commerce", "proof"],
+  },
+  one_cent_mcp: {
+    title: "1-Cent Micro-Payment MCP",
+    input: "single_url_json",
+    tags: ["mcp", "micropayment", "1cent", "base"],
   },
 };
 
@@ -190,6 +204,8 @@ export function routeExample(route: RouteDefinition): string {
       return "/v1/batch-preflight";
     case "premium_preflight":
       return "/v1/premium-preflight?url=https://example.com";
+    case "one_cent_mcp":
+      return "/v1/1cent-mcp";
   }
 }
 
