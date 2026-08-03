@@ -102,6 +102,15 @@ export const PRICING_REGISTRY = {
     tool: "agent_scrape_mcp",
     description: "Agent web scraping MCP tool proxy to agent-scrape.healingsunhaven.workers.dev/mcp settled on Base.",
   },
+  agent402_mcp: {
+    route: "/v1/agent402-mcp",
+    method: "POST",
+    price: "$0.02",
+    amount: "20000",
+    atomic: "20000",
+    tool: "agent402_mcp",
+    description: "Agent402 tool marketplace proxy to agent402.tools/mcp settled on Base.",
+  },
 } as const;
 
 export type RouteId = keyof typeof PRICING_REGISTRY;
@@ -158,6 +167,11 @@ const ROUTE_METADATA: Record<
     title: "Agent Web Scrape MCP",
     input: "single_url_json",
     tags: ["mcp", "scraping", "web", "base"],
+  },
+  agent402_mcp: {
+    title: "Agent402 Commerce MCP",
+    input: "single_url_json",
+    tags: ["mcp", "agent402", "commerce", "x402", "base"],
   },
 };
 
@@ -222,6 +236,8 @@ export function routeExample(route: RouteDefinition): string {
       return "/v1/1cent-mcp";
     case "agent_scrape_mcp":
       return "/v1/agent-scrape-mcp";
+    case "agent402_mcp":
+      return "/v1/agent402-mcp";
   }
 }
 
